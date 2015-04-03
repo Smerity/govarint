@@ -41,6 +41,8 @@ func (b *U32GroupVarintEncoder) Flush() int {
 	if b.index == 0 {
 		return 0
 	}
+	// In the case we're flushing (the group isn't of size four), the non-values should be zero
+	// This ensures the unused entries are all zero in the sizeByte
 	for i := b.index; i < 4; i++ {
 		b.store[i] = 0
 	}
@@ -51,15 +53,20 @@ func (b *U32GroupVarintEncoder) Flush() int {
 		size := byte(0)
 		shifts := []byte{24, 16, 8, 0}
 		for _, shift := range shifts {
+			// Always writes at least one byte -- the first one (shift = 0)
+			// Will write more bytes until the rest of the integer is all zeroes
 			if shift == 0 || (x>>shift) != 0 {
 				size += 1
 				b.temp[length] = byte(x >> shift)
 				length += 1
 			}
 		}
-		size -= 1
-		b.temp[0] |= size << (uint8(3-i) * 2)
+		// We store the size in two of the eight bits in the first byte (sizeByte)
+		// 0 means there is one byte in total, hence why we subtract one from size
+		b.temp[0] |= (size - 1) << (uint8(3-i) * 2)
 	}
+	// If we're flushing without a full group of four, remove the unused bytes we computed
+	// This enables us to realize it's a partial group on decoding thanks to EOF
 	if b.index != 4 {
 		length -= 4 - b.index
 	}
@@ -79,6 +86,7 @@ func (b *U32GroupVarintEncoder) PutU32(x uint32) (int, error) {
 }
 
 func (b *U32GroupVarintEncoder) Close() {
+	// On Close, we flush any remaining values that might not have been in a full group
 	b.Flush()
 }
 
@@ -97,18 +105,25 @@ func NewU32GroupVarintDecoder(r io.ByteReader) *U32GroupVarintDecoder {
 }
 
 func (b *U32GroupVarintDecoder) getGroup() error {
+	// We should always get a sizeByte if there are more values to read
 	sizeByte, err := b.r.ReadByte()
 	if err != nil {
 		return err
 	}
 	for index := 0; index < 4; index++ {
 		b.group[index] = 0
+		// Calculate the size of the incoming entry
+		// All of this selects the two bits that represent the entry size
+		// Adding one is necessary as 0b00 means 1 byte to read, 0b11 = 4, etc
 		size := int(sizeByte>>(uint8(3-index)*2))&0x03 + 1
 		for i := 0; i < size; i++ {
 			valByte, err := b.r.ReadByte()
 			if err == io.EOF {
+				// If we hit EOF here, we have found a partial group
+				// We've read valid entries and will return EOF once we give them out
 				b.capacity = index
 				b.finished = true
+				break
 			} else if err != nil {
 				return err
 			}
@@ -118,12 +133,15 @@ func (b *U32GroupVarintDecoder) getGroup() error {
 			break
 		}
 	}
+	// Reset the pos pointer to the beginning of the read values
 	b.pos = 0
 	return nil
 }
 
 func (b *U32GroupVarintDecoder) GetU32() (uint32, error) {
+	// Check if we have any more values to give out - if not, let's get them
 	if b.pos == b.capacity {
+		// If finished is set, there is nothing else to do
 		if b.finished {
 			return 0, io.EOF
 		}
@@ -132,6 +150,7 @@ func (b *U32GroupVarintDecoder) GetU32() (uint32, error) {
 			return 0, err
 		}
 	}
+	// Increment pointer and return the value stored at that point
 	b.pos += 1
 	return b.group[b.pos-1], nil
 }

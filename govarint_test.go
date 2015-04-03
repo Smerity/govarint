@@ -2,6 +2,7 @@ package govarint
 
 import "bytes"
 import "io"
+import "math/rand"
 import "testing"
 
 var fourU32 = []uint32{
@@ -180,6 +181,82 @@ func TestU32GroupVarint14(t *testing.T) {
 		}
 		if i != len(subset) {
 			t.Errorf("%d integers were decoded when %d were encoded", i, len(subset))
+		}
+	}
+}
+
+func generateRandomU16() (uint64, []uint32) {
+	// TODO: This is slow - either linear-feedback shift register or cache ...
+	rand.Seed(42)
+	data := make([]uint32, 10000000, 10000000)
+	total := uint64(0)
+	for i := range data {
+		data[i] = rand.Uint32() % 65536
+		total += uint64(data[i])
+	}
+	return total, data
+}
+
+func BenchmarkBase128(b *testing.B) {
+	var buf bytes.Buffer
+	enc := NewU32Base128Encoder(&buf)
+	expectedTotal, data := generateRandomU16()
+	for _, expected := range data {
+		enc.PutU32(expected)
+	}
+	enc.Close()
+	readBuf := bytes.NewReader(buf.Bytes())
+	for i := 0; i < b.N; i++ {
+		readBuf.Seek(0, 0)
+		dec := NewU32Base128Decoder(readBuf)
+		total := uint64(0)
+		idx := 0
+		for {
+			x, err := dec.GetU32()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				b.Errorf("Hit err: %v", err)
+			}
+
+			total += uint64(x)
+			idx += 1
+		}
+		if total != expectedTotal {
+			b.Errorf("Total was %d when %d was expected, having read %d integers", total, expectedTotal, idx)
+		}
+	}
+}
+
+func BenchmarkGroupVarint(b *testing.B) {
+	var buf bytes.Buffer
+	enc := NewU32GroupVarintEncoder(&buf)
+	expectedTotal, data := generateRandomU16()
+	for _, expected := range data {
+		enc.PutU32(expected)
+	}
+	enc.Close()
+	readBuf := bytes.NewReader(buf.Bytes())
+	for i := 0; i < b.N; i++ {
+		readBuf.Seek(0, 0)
+		dec := NewU32GroupVarintDecoder(readBuf)
+		total := uint64(0)
+		idx := 0
+		for {
+			x, err := dec.GetU32()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				b.Errorf("Hit err: %v", err)
+			}
+
+			total += uint64(x)
+			idx += 1
+		}
+		if total != expectedTotal {
+			b.Errorf("Total was %d when %d was expected, having read %d integers", total, expectedTotal, idx)
 		}
 	}
 }

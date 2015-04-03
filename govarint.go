@@ -45,6 +45,8 @@ func (b *U32GroupVarintEncoder) Flush() int {
 		b.store[i] = 0
 	}
 	length := 1
+	// We need to reset the size byte to zero as we only bitwise OR into it, we don't overwrite it
+	b.temp[0] = 0
 	for i, x := range b.store {
 		size := byte(0)
 		shifts := []byte{24, 16, 8, 0}

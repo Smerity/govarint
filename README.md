@@ -1,9 +1,10 @@
 # Govarint
 
-This project aims to provide a simple API for the encoding and decoding of 32 and 64 bit integers.
-Swapping out algorithms should be as trivial as calling a different constructor.
+This project aims to provide a simple API for the performant encoding and decoding of 32 and 64 bit integers using a variety of algorithms.
 
-# Usage
+[![](http://i.imgur.com/mpgC23U.jpg)](https://www.flickr.com/photos/tsevis/8648521649/)
+
+## Usage
 
 Each integer encoding algorithm conforms to an encoding and decoding interface.
 The interfaces also specify the size of the unsigned integer, either 32 or 64 bits, and will be referred to as XX below.
@@ -35,7 +36,7 @@ When reading is complete, `GetUXX` will return an `EOF` (End Of File).
     dec := NewU32Base128Decoder(&buf)
     x, err := dec.GetU32()
 
-# Use Cases
+## Use Cases
 
 Using fixed width integers, such as uint32 and uint64, usually waste large amounts of space, especially when encoding small values.
 Optimally, smaller numbers should take less space to represent.
@@ -48,7 +49,7 @@ For an explicit example, the Web Data Commons Hyperlink Graph contains 128 billi
 By converting all these edges to 64 bit integers (32 | 32), sorting them, and then using delta encoding, memory usage can be reduced from 64 bits per edge down to only 9 bits per edge using the Base128 integer encoding algorithm.
 This figure improves even further if compressed using conventional compression algorithms (3 bits per edge).
 
-# Encodings supported
+## Encodings supported
 
 `govarint` supports:
 
@@ -57,10 +58,10 @@ This figure improves even further if compressed using conventional compression a
 
 Group Varint consistently beats Base128 in decompression speed but Base128 may offer improved compression ratios depending on the distribution of the supplied integers.
 
-# Tests
+## Tests
 
     go test -v -bench=.
 
-# License
+## License
 
 MIT License, as per `LICENSE`

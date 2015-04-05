@@ -36,10 +36,11 @@ type U32GroupVarintEncoder struct {
 
 func NewU32GroupVarintEncoder(w io.Writer) *U32GroupVarintEncoder { return &U32GroupVarintEncoder{w: w} }
 
-func (b *U32GroupVarintEncoder) Flush() int {
+func (b *U32GroupVarintEncoder) Flush() (int, error) {
 	// TODO: Is it more efficient to have a tailored version that's called only in Close()?
+	// If index is zero, there are no integers to flush
 	if b.index == 0 {
-		return 0
+		return 0, nil
 	}
 	// In the case we're flushing (the group isn't of size four), the non-values should be zero
 	// This ensures the unused entries are all zero in the sizeByte
@@ -55,7 +56,7 @@ func (b *U32GroupVarintEncoder) Flush() int {
 		for _, shift := range shifts {
 			// Always writes at least one byte -- the first one (shift = 0)
 			// Will write more bytes until the rest of the integer is all zeroes
-			if shift == 0 || (x>>shift) != 0 {
+			if (x>>shift) != 0 || shift == 0 {
 				size += 1
 				b.temp[length] = byte(x >> shift)
 				length += 1
@@ -70,8 +71,8 @@ func (b *U32GroupVarintEncoder) Flush() int {
 	if b.index != 4 {
 		length -= 4 - b.index
 	}
-	b.w.Write(b.temp[:length])
-	return length
+	_, err := b.w.Write(b.temp[:length])
+	return length, err
 }
 
 func (b *U32GroupVarintEncoder) PutU32(x uint32) (int, error) {
@@ -79,7 +80,11 @@ func (b *U32GroupVarintEncoder) PutU32(x uint32) (int, error) {
 	b.store[b.index] = x
 	b.index += 1
 	if b.index == 4 {
-		bytesWritten += b.Flush()
+		n, err := b.Flush()
+		if err != nil {
+			return n, err
+		}
+		bytesWritten += n
 		b.index = 0
 	}
 	return bytesWritten, nil
@@ -115,7 +120,7 @@ func (b *U32GroupVarintDecoder) getGroup() error {
 		// Calculate the size of the incoming entry
 		// All of this selects the two bits that represent the entry size
 		// Adding one is necessary as 0b00 means 1 byte to read, 0b11 = 4, etc
-		size := int(sizeByte>>(uint8(3-index)*2))&0x03 + 1
+		size := int((sizeByte>>(uint8(3-index)*2))&0x03) + 1
 		for i := 0; i < size; i++ {
 			valByte, err := b.r.ReadByte()
 			if err == io.EOF {

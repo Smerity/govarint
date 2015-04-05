@@ -4,7 +4,6 @@ import "encoding/binary"
 import "io"
 
 type U32VarintEncoder interface {
-	GetU32(r io.ByteReader) (uint32, error)
 	PutU32(x uint32) int
 	Close()
 }
@@ -16,7 +15,6 @@ type U32VarintDecoder interface {
 ///
 
 type U64VarintEncoder interface {
-	GetU64(r io.ByteReader) (uint64, error)
 	PutU64(x uint64) int
 	Close()
 }

@@ -161,22 +161,25 @@ func (b *U32GroupVarintDecoder) GetU32() (uint32, error) {
 ///
 
 type Base128Encoder struct {
-	w io.Writer
+	w        io.Writer
+	tmpBytes []byte
 }
 
-func NewU32Base128Encoder(w io.Writer) *Base128Encoder { return &Base128Encoder{w: w} }
-func NewU64Base128Encoder(w io.Writer) *Base128Encoder { return &Base128Encoder{w: w} }
+func NewU32Base128Encoder(w io.Writer) *Base128Encoder {
+	return &Base128Encoder{w: w, tmpBytes: make([]byte, binary.MaxVarintLen32)}
+}
+func NewU64Base128Encoder(w io.Writer) *Base128Encoder {
+	return &Base128Encoder{w: w, tmpBytes: make([]byte, binary.MaxVarintLen64)}
+}
 
 func (b *Base128Encoder) PutU32(x uint32) (int, error) {
-	bytes := make([]byte, binary.MaxVarintLen32)
-	writtenBytes := binary.PutUvarint(bytes, uint64(x))
-	return b.w.Write(bytes[:writtenBytes])
+	writtenBytes := binary.PutUvarint(b.tmpBytes, uint64(x))
+	return b.w.Write(b.tmpBytes[:writtenBytes])
 }
 
 func (b *Base128Encoder) PutU64(x uint64) (int, error) {
-	bytes := make([]byte, binary.MaxVarintLen64)
-	writtenBytes := binary.PutUvarint(bytes, x)
-	return b.w.Write(bytes[:writtenBytes])
+	writtenBytes := binary.PutUvarint(b.tmpBytes, x)
+	return b.w.Write(b.tmpBytes[:writtenBytes])
 }
 
 func (b *Base128Encoder) Close() {

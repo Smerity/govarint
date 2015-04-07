@@ -199,8 +199,28 @@ func generateRandomU14() (uint64, []uint32) {
 	return total, data
 }
 
+func speedTest(b *testing.B, dec U32VarintDecoder, readBuf *bytes.Reader, expectedTotal uint64) {
+	total := uint64(0)
+	idx := 0
+	for {
+		x, err := dec.GetU32()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			b.Errorf("Hit err: %v", err)
+		}
+		total += uint64(x)
+		idx += 1
+	}
+	if total != expectedTotal {
+		b.Errorf("Total was %d when %d was expected, having read %d integers", total, expectedTotal, idx)
+	}
+}
+
 func BenchmarkBase128(b *testing.B) {
 	b.StopTimer()
+	//
 	var buf bytes.Buffer
 	enc := NewU32Base128Encoder(&buf)
 	expectedTotal, data := generateRandomU14()
@@ -208,34 +228,19 @@ func BenchmarkBase128(b *testing.B) {
 		enc.PutU32(expected)
 	}
 	enc.Close()
+	//
 	readBuf := bytes.NewReader(buf.Bytes())
-	outBuf := make([]uint32, 1000000)
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		readBuf.Seek(0, 0)
 		dec := NewU32Base128Decoder(readBuf)
-		total := uint64(0)
-		idx := 0
-		for {
-			x, err := dec.GetU32()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				b.Errorf("Hit err: %v", err)
-			}
-			outBuf = append(outBuf, x)
-			total += uint64(x)
-			idx += 1
-		}
-		if total != expectedTotal {
-			b.Errorf("Total was %d when %d was expected, having read %d integers", total, expectedTotal, idx)
-		}
+		speedTest(b, dec, readBuf, expectedTotal)
 	}
 }
 
 func BenchmarkGroupVarint(b *testing.B) {
 	b.StopTimer()
+	//
 	var buf bytes.Buffer
 	enc := NewU32GroupVarintEncoder(&buf)
 	expectedTotal, data := generateRandomU14()
@@ -243,27 +248,12 @@ func BenchmarkGroupVarint(b *testing.B) {
 		enc.PutU32(expected)
 	}
 	enc.Close()
+	//
 	readBuf := bytes.NewReader(buf.Bytes())
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		readBuf.Seek(0, 0)
 		dec := NewU32GroupVarintDecoder(readBuf)
-		total := uint64(0)
-		idx := 0
-		for {
-			x, err := dec.GetU32()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				b.Errorf("Hit err: %v", err)
-			}
-
-			total += uint64(x)
-			idx += 1
-		}
-		if total != expectedTotal {
-			b.Errorf("Total was %d when %d was expected, having read %d integers", total, expectedTotal, idx)
-		}
+		speedTest(b, dec, readBuf, expectedTotal)
 	}
 }

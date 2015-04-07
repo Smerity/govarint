@@ -185,27 +185,32 @@ func TestU32GroupVarint14(t *testing.T) {
 	}
 }
 
-func generateRandomU16() (uint64, []uint32) {
-	// TODO: This is slow - either linear-feedback shift register or cache ...
+func generateRandomU14() (uint64, []uint32) {
+	// Need to be aware to make it fair for Base128
+	// Base128 has 7 usable bits per byte
 	rand.Seed(42)
-	data := make([]uint32, 10000000, 10000000)
+	testSize := 1000000
+	data := make([]uint32, testSize, testSize)
 	total := uint64(0)
 	for i := range data {
-		data[i] = rand.Uint32() % 65536
+		data[i] = rand.Uint32() % 16384
 		total += uint64(data[i])
 	}
 	return total, data
 }
 
 func BenchmarkBase128(b *testing.B) {
+	b.StopTimer()
 	var buf bytes.Buffer
 	enc := NewU32Base128Encoder(&buf)
-	expectedTotal, data := generateRandomU16()
+	expectedTotal, data := generateRandomU14()
 	for _, expected := range data {
 		enc.PutU32(expected)
 	}
 	enc.Close()
 	readBuf := bytes.NewReader(buf.Bytes())
+	outBuf := make([]uint32, 1000000)
+	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		readBuf.Seek(0, 0)
 		dec := NewU32Base128Decoder(readBuf)
@@ -219,7 +224,7 @@ func BenchmarkBase128(b *testing.B) {
 			if err != nil {
 				b.Errorf("Hit err: %v", err)
 			}
-
+			outBuf = append(outBuf, x)
 			total += uint64(x)
 			idx += 1
 		}
@@ -230,14 +235,16 @@ func BenchmarkBase128(b *testing.B) {
 }
 
 func BenchmarkGroupVarint(b *testing.B) {
+	b.StopTimer()
 	var buf bytes.Buffer
 	enc := NewU32GroupVarintEncoder(&buf)
-	expectedTotal, data := generateRandomU16()
+	expectedTotal, data := generateRandomU14()
 	for _, expected := range data {
 		enc.PutU32(expected)
 	}
 	enc.Close()
 	readBuf := bytes.NewReader(buf.Bytes())
+	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		readBuf.Seek(0, 0)
 		dec := NewU32GroupVarintDecoder(readBuf)

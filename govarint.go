@@ -108,32 +108,57 @@ func NewU32GroupVarintDecoder(r io.ByteReader) *U32GroupVarintDecoder {
 }
 
 func (b *U32GroupVarintDecoder) getGroup() error {
-	// We should always get a sizeByte if there are more values to read
+	// We should always receive a sizeByte if there are more values to read
 	sizeByte, err := b.r.ReadByte()
 	if err != nil {
 		return err
 	}
-	for index := 0; index < 4; index++ {
+	// Calculate the size of the four incoming 32 bit integers
+	// 0b00 means 1 byte to read, 0b01 = 2, etc
+	b.group[0] = uint32((sizeByte >> 6) & 3)
+	b.group[1] = uint32((sizeByte >> 4) & 3)
+	b.group[2] = uint32((sizeByte >> 2) & 3)
+	b.group[3] = uint32(sizeByte & 3)
+	//
+	for index, size := range b.group {
 		b.group[index] = 0
-		// Calculate the size of the incoming entry
-		// All of this selects the two bits that represent the entry size
-		// Adding one is necessary as 0b00 means 1 byte to read, 0b11 = 4, etc
-		size := int((sizeByte>>(uint8(3-index)*2))&0x03) + 1
-		for i := 0; i < size; i++ {
-			valByte, err := b.r.ReadByte()
+		// Any error that occurs in earlier byte reads should be repeated at the end one
+		// Hence we only catch and report the final ReadByte's error
+		var err error
+		switch size {
+		case 0:
+			var x byte
+			x, err = b.r.ReadByte()
+			b.group[index] = uint32(x)
+		case 1:
+			var x, y byte
+			x, _ = b.r.ReadByte()
+			y, err = b.r.ReadByte()
+			b.group[index] = uint32(x)<<8 | uint32(y)
+		case 2:
+			var x, y, z byte
+			x, _ = b.r.ReadByte()
+			y, _ = b.r.ReadByte()
+			z, err = b.r.ReadByte()
+			b.group[index] = uint32(x)<<16 | uint32(y)<<8 | uint32(z)
+		case 3:
+			var x, y, z, zz byte
+			x, _ = b.r.ReadByte()
+			y, _ = b.r.ReadByte()
+			z, _ = b.r.ReadByte()
+			zz, err = b.r.ReadByte()
+			b.group[index] = uint32(x)<<24 | uint32(y)<<16 | uint32(z)<<8 | uint32(zz)
+		}
+		if err != nil {
 			if err == io.EOF {
 				// If we hit EOF here, we have found a partial group
-				// We've read valid entries and will return EOF once we give them out
+				// We've return any valid entries we have read and return EOF once we run out
 				b.capacity = index
 				b.finished = true
 				break
-			} else if err != nil {
+			} else {
 				return err
 			}
-			b.group[index] = b.group[index]<<8 + uint32(valByte)
-		}
-		if b.finished {
-			break
 		}
 	}
 	// Reset the pos pointer to the beginning of the read values
